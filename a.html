@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="uk">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Генератор QR-кодів</title>
+  <style>
+    :root{--bg:#0f172a;--muted:#94a3b8;--accent:#7c3aed}
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{margin:0;font-family:Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; background:linear-gradient(180deg,#071027 0%, #071022 60%); color:#e6eef8;display:flex;align-items:center;justify-content:center;padding:24px}
+    .app{width:100%;max-width:980px;background:linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.02));border-radius:14px;padding:20px;box-shadow:0 10px 30px rgba(2,6,23,0.6);display:grid;grid-template-columns:1fr 420px;gap:18px}
+    header{grid-column:1/-1;display:flex;align-items:center;gap:12px}
+    h1{font-size:18px;margin:0}
+    .left{display:flex;flex-direction:column;gap:12px}
+    label{font-size:12px;color:var(--muted)}
+    textarea{width:100%;min-height:140px;padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit;resize:vertical;font-size:14px}
+    .controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+    .control{background:rgba(255,255,255,0.02);padding:10px;border-radius:8px;display:flex;gap:8px;align-items:center}
+    input[type="color"]{width:40px;height:34px;padding:0;border:0;background:transparent}
+    input[type="range"]{width:160px}
+    button{background:var(--accent);border:0;color:white;padding:10px 14px;border-radius:9px;cursor:pointer;font-weight:600}
+    .preview{display:flex;flex-direction:column;align-items:center;gap:12px;padding:18px;background:linear-gradient(180deg, rgba(255,255,255,0.015), rgba(255,255,255,0.01));border-radius:12px;justify-content:center}
+    .canvas-wrap{width:100%;display:flex;align-items:center;justify-content:center;padding:8px;background:rgba(0,0,0,0.45);border-radius:10px}
+    img{background:white;border-radius:6px;max-width:100%;height:auto; image-rendering: pixelated}
+    .meta{display:flex;gap:8px;align-items:center;font-size:13px;color:var(--muted)}
+    footer{grid-column:1/-1;font-size:12px;color:var(--muted);display:flex;justify-content:space-between;align-items:center;margin-top:4px}
+    @media (max-width:900px){.app{grid-template-columns:1fr;max-width:760px}.preview{order:-1}}
+  </style>
+</head>
+<body>
+  <main class="app" role="main">
+    <header>
+      <h1>Генератор QR-кодів</h1>
+    </header>
+
+    <section class="left" aria-labelledby="inputLabel">
+      <div>
+        <label id="inputLabel">Текст / URL-адреса</label>
+        <textarea id="text" placeholder="Введіть або вставте ваш текст / URL-адресу тут">https://example.com</textarea>
+      </div>
+
+      <div class="controls">
+        <div class="control" style="padding-right:14px;">
+          <label style="font-size:12px;color:var(--muted)">Розмір</label>
+          <input id="size" type="range" min="128" max="2000" step="16" value="720" aria-label="Розмір QR-коду">
+        </div>
+
+        <div class="control" title="Колір фону">
+          <label style="font-size:12px;color:var(--muted)">Фон</label>
+          <input id="bg" type="color" value="#ffffff" aria-label="Вибір кольору фону">
+        </div>
+
+        <div style="margin-left:auto;display:flex;gap:8px">
+          <button id="regen">Згенерувати</button>
+          <button id="download">Завантажити PNG</button>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:10px;align-items:center;margin-top:6px">
+        <label style="font-size:12px;color:var(--muted)">Корекція помилок</label>
+        <select id="ec" style="background:transparent;border-radius:8px;padding:8px;border:1px solid rgba(255,255,255,0.04);color:inherit">
+          <option value="L">L (7%)</option>
+          <option value="M">M (15%)</option>
+          <option value="Q" selected>Q (25%)</option>
+          <option value="H">H (30%)</option>
+        </select>
+        <label style="font-size:12px;color:var(--muted);margin-left:8px">Порада: вставте довгу URL-адресу або текст</label>
+      </div>
+    </section>
+
+    <aside class="preview" aria-labelledby="previewLabel">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div style="font-size:13px;color:var(--muted)">Попередній перегляд</div>
+        <div class="meta" id="meta">
+          <span id="metaSize">720×720</span>
+        </div>
+      </div>
+
+      <div class="canvas-wrap">
+        <canvas id="qrCanvas" style="background:white;border-radius:6px;max-width:100%;max-height:380px"></canvas>
+      </div>
+
+      <div style="display:flex;gap:8px;align-items:center">
+        <button id="zoomIn">+ Збільшити</button>
+        <button id="zoomOut">- Зменшити</button>
+        <button id="reset">Скинути</button>
+      </div>
+
+    </aside>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
+
+<script>
+  const canvas = document.getElementById('qrCanvas');
+  const textEl = document.getElementById('text');
+  const sizeEl = document.getElementById('size');
+  const regenBtn = document.getElementById('regen');
+  const dlBtn = document.getElementById('download');
+  const metaSize = document.getElementById('metaSize');
+  let ctx = canvas.getContext('2d');
+
+  function drawQR() {
+    const text = (textEl.value || '').trim();
+    if (!text) {
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      return;
+    }
+
+    let size = parseInt(sizeEl.value, 10) || 320;
+    size = Math.max(128, Math.min(2000, size));
+    metaSize.textContent = `${size}×${size}`;
+
+    // Generate QR
+    let qr = qrcode(0, 'M'); // error correction M
+    qr.addData(text);
+    qr.make();
+
+    const moduleCount = qr.getModuleCount();
+    const moduleSize = Math.floor(size / moduleCount);
+    const qrPixelSize = moduleCount * moduleSize;
+    const margin = Math.floor((size - qrPixelSize) / 2);
+
+    canvas.width = size;
+    canvas.height = size;
+
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0,0,size,size);
+
+    ctx.fillStyle = '#000000';
+    for (let row = 0; row < moduleCount; row++) {
+      for (let col = 0; col < moduleCount; col++) {
+        if (qr.isDark(row, col)) {
+          ctx.fillRect(margin + col*moduleSize, margin + row*moduleSize, moduleSize, moduleSize);
+        }
+      }
+    }
+  }
+
+  function downloadPNG() {
+    const link = document.createElement('a');
+    link.download = 'qr.png';
+    link.href = canvas.toDataURL();
+    link.click();
+  }
+
+  regenBtn.addEventListener('click', drawQR);
+  dlBtn.addEventListener('click', downloadPNG);
+  textEl.addEventListener('input', ()=>setTimeout(drawQR,150));
+  sizeEl.addEventListener('input', drawQR);
+
+  window.addEventListener('load', drawQR);
+</script>
+
+</body>
+</html>
